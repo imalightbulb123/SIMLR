@@ -76,15 +76,14 @@ def get_daily_policies(country_data_features, features, encoder_dict):
     
     return daily_policy
 
+# Define the function to create the policy dictionary
 def create_policy_dict(policies_cardinality):
-    encoder_dict = dict()
-
+    encoder_dict = {}
     for element in policies_cardinality.keys():
         print('Creating encoder for', element)
-        c_encoder = OneHotEncoder(sparse=False)
-        c_encoder.fit(np.reshape(np.arange(policies_cardinality[element]), (-1,1)))
+        c_encoder = OneHotEncoder(sparse_output=False)  # Updated argument name
+        c_encoder.fit(np.reshape(np.arange(policies_cardinality[element]), (-1, 1)))
         encoder_dict[element] = c_encoder
-    
     return encoder_dict
 
 '''
@@ -92,14 +91,14 @@ def create_policy_dict(policies_cardinality):
 Loading and preprocessing code
 ------------------------------------------------------
 '''
-
 def extract_data(start_date, end_date, country_data, features):
     '''
     This function extracts and preprocess the new daily cases and deaths
     '''
     index_start_date = np.where(country_data['Date'].values == start_date)[0][0]
     index_end_date = np.where(country_data['Date'].values == end_date)[0][0]
-
+    if len(index_start_date) == 0 or len(index_end_date) == 0:
+        raise IndexError("Date range not found in data")
     country_data_dates = country_data.iloc[index_start_date:index_end_date+1,]
 
     cases = country_data_dates.loc[:, 'ConfirmedCases'].values
@@ -135,6 +134,7 @@ def extract_data(start_date, end_date, country_data, features):
     
     return dates, processed_cases, processed_deaths, country_data_features.iloc[1:,:]
 
+
 def create_SIR_data(population, processed_cases, processed_deaths, recovery_time=14):
     '''
     This function transforms the newly daily cases and deaths into S,I,R data.
@@ -147,8 +147,8 @@ def create_SIR_data(population, processed_cases, processed_deaths, recovery_time
     deaths_eliminated = 0
     
     for i in range(len(cum_region_deaths) - recovery_time):
-        possible_recovery = np.float(processed_cases[i])
-        deaths_x_days = np.float(cum_region_deaths[i + recovery_time])
+        possible_recovery = float(processed_cases[i])
+        deaths_x_days = float(cum_region_deaths[i + recovery_time])
 
         if possible_recovery > 0:
             actual_recovered = possible_recovery - (deaths_x_days - deaths_eliminated)
@@ -157,8 +157,7 @@ def create_SIR_data(population, processed_cases, processed_deaths, recovery_time
         else:
             actual_recovered = 0
 
-    all_region = np.vstack([processed_cases, processed_deaths, \
-                            processed_recovered])
+    all_region = np.vstack([processed_cases, processed_deaths, processed_recovered])
 
     # Create the SIR data
     S = [population - processed_cases[0] - processed_deaths[0] - processed_recovered[0]]
@@ -167,11 +166,8 @@ def create_SIR_data(population, processed_cases, processed_deaths, recovery_time
 
     for i in range(len(processed_cases)-1):
         S.append(S[i] - processed_cases[i+1])
-        I.append(I[i] + processed_cases[i+1] \
-                 - processed_deaths[i+1] \
-                 - processed_recovered[i+1])
-        R.append(R[i] + processed_deaths[i+1] \
-                 + processed_recovered[i+1])
+        I.append(I[i] + processed_cases[i+1] - processed_deaths[i+1] - processed_recovered[i+1])
+        R.append(R[i] + processed_deaths[i+1] + processed_recovered[i+1])
     return S, I, R
 
 
@@ -312,6 +308,7 @@ def date_to_str_Alberta(date):
 Fitting the SIR model
 ------------------------------------------------------
 '''
+
 def beta_gamma_solver(S, I, R):
 	# Create the dataset for solving for Beta and Gamma
 	S_next = np.array(S[1:])
@@ -354,6 +351,8 @@ def beta_gamma_solver(S, I, R):
 	gamma = solution[1,0]
 	
 	return beta, gamma
+
+
 
 def learn_beta_gamma_models(X_policy, beta_policy, gamma_policy, alpha):
     '''
